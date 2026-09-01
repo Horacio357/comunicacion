@@ -1,12 +1,34 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder-url.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const rawUrl = import.meta.env.VITE_SUPABASE_URL;
+const rawKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_URL.includes('tu-proyecto-id')) {
-  console.warn(
-    'Supabase URL o Anon Key faltante o por defecto. Activando modo local.'
-  );
-}
+export const isConfigured = Boolean(
+  rawUrl &&
+  rawKey &&
+  typeof rawUrl === 'string' &&
+  typeof rawKey === 'string' &&
+  rawUrl.startsWith('http') &&
+  !rawUrl.includes('tu-proyecto-id') &&
+  !rawKey.includes('tu-anon-key')
+);
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// If real credentials are provided, use real client; otherwise provide a safe mock client that never throws
+export const supabase = isConfigured
+  ? createClient(rawUrl, rawKey)
+  : {
+      auth: {
+        getSession: async () => ({ data: { session: null }, error: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+        signInWithPassword: async () => ({ data: { session: null, user: null }, error: new Error('Modo demo activo') }),
+        signUp: async () => ({ data: { session: null, user: null }, error: new Error('Modo demo activo') }),
+        signOut: async () => ({ error: null }),
+      },
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: null, error: null })
+          })
+        })
+      })
+    };

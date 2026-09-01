@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, isConfigured } from '../lib/supabaseClient';
 
 const AuthContext = createContext(null);
 
@@ -21,9 +21,7 @@ const ROLE_NAMES = {
   6: 'ESTUDIANTE'
 };
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const isMockMode = !supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('tu-proyecto-id');
+const isMockMode = !isConfigured;
 
 const DEFAULT_MOCK_USERS = [
   { email: 'horacitoxp@gmail.com', password: '1234567', nombre: 'Horacio', apellido: 'QA', rol: 'ADMIN', isQA: true },
@@ -34,15 +32,15 @@ const DEFAULT_MOCK_USERS = [
 ];
 
 const getMockUsers = () => {
-  const stored = localStorage.getItem('mock_users');
-  if (stored) {
-    try {
+  try {
+    const stored = localStorage.getItem('mock_users');
+    if (stored) {
       return JSON.parse(stored);
-    } catch (e) {
-      return DEFAULT_MOCK_USERS;
     }
-  }
-  localStorage.setItem('mock_users', JSON.stringify(DEFAULT_MOCK_USERS));
+  } catch (e) {}
+  try {
+    localStorage.setItem('mock_users', JSON.stringify(DEFAULT_MOCK_USERS));
+  } catch (e) {}
   return DEFAULT_MOCK_USERS;
 };
 
@@ -148,7 +146,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     return () => {
-      if (subscription) subscription.unsubscribe();
+      if (subscription?.unsubscribe) subscription.unsubscribe();
     };
   }, []);
 
@@ -174,7 +172,10 @@ export const AuthProvider = ({ children }) => {
         profile: mockProfileObj
       };
 
-      localStorage.setItem('mock_session', JSON.stringify(mockSessObj));
+      try {
+        localStorage.setItem('mock_session', JSON.stringify(mockSessObj));
+      } catch (e) {}
+      
       setSession(mockSessObj);
       setUser(mockUserObj);
       setProfile(mockProfileObj);
@@ -208,7 +209,10 @@ export const AuthProvider = ({ children }) => {
         profile: mockProfileObj
       };
 
-      localStorage.setItem('mock_session', JSON.stringify(mockSessObj));
+      try {
+        localStorage.setItem('mock_session', JSON.stringify(mockSessObj));
+      } catch (e) {}
+
       setSession(mockSessObj);
       setUser(mockUserObj);
       setProfile(mockProfileObj);
@@ -244,7 +248,9 @@ export const AuthProvider = ({ children }) => {
       };
 
       const updatedUsers = [...users, newUser];
-      localStorage.setItem('mock_users', JSON.stringify(updatedUsers));
+      try {
+        localStorage.setItem('mock_users', JSON.stringify(updatedUsers));
+      } catch(e) {}
       setLoading(false);
       return newUser;
     }
@@ -272,7 +278,9 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     setLoading(true);
-    localStorage.removeItem('mock_session');
+    try {
+      localStorage.removeItem('mock_session');
+    } catch (e) {}
     setProfile(null);
     setSession(null);
     setUser(null);
@@ -299,7 +307,9 @@ export const AuthProvider = ({ children }) => {
       user: user || { id: 'mock-id-qa', email: 'horacitoxp@gmail.com' },
       profile: updatedProfile
     };
-    localStorage.setItem('mock_session', JSON.stringify(updatedSess));
+    try {
+      localStorage.setItem('mock_session', JSON.stringify(updatedSess));
+    } catch (e) {}
     setSession(updatedSess);
   };
 
