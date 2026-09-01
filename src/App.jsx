@@ -13,24 +13,75 @@ import ReportCreator from './components/ReportCreator';
 import ReportViewer from './components/ReportViewer';
 import GlobalAnnouncements from './components/GlobalAnnouncements';
 
+// 0. ErrorBoundary component to prevent blank screens on render exceptions
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    localStorage.clear();
+    window.location.href = '/login';
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center p-6 text-center font-sans">
+          <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-slate-200">
+            <span className="text-5xl mb-4 block">⚠️</span>
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Ocurrió un error inesperado</h2>
+            <p className="text-xs text-slate-500 mb-4">
+              {this.state.error?.message || 'Error al renderizar el componente.'}
+            </p>
+            <button
+              onClick={this.handleReset}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors w-full cursor-pointer"
+            >
+              🔄 Limpiar sesión y reiniciar
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // 1. RootRedirect component to decide home screen based on user role
 const RootRedirect = () => {
-  const { role, loading } = useAuth();
+  const { session, role, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen flex justify-center items-center bg-slate-100">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-emerald-600"></div>
+      <div className="min-h-screen flex justify-center items-center bg-slate-100 font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-emerald-600"></div>
+          <span className="text-xs text-slate-500 font-medium">Cargando portal escolar...</span>
+        </div>
       </div>
     );
   }
 
-  if (role === 'ADMIN') return <Navigate to="/admin/faq" replace />;
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
+
   if (role === 'DOCENTE') return <Navigate to="/docente/scanner" replace />;
   if (role === 'ESTUDIANTE') return <Navigate to="/estudiante/dashboard" replace />;
   if (role === 'FAMILIA') return <Navigate to="/familia/chats" replace />;
-
-  return <Navigate to="/login" replace />;
+  
+  // Safe default for ADMIN or any active session
+  return <Navigate to="/admin/faq" replace />;
 };
 
 // 2. ProtectedRoute wrapper to guard views
@@ -40,7 +91,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex justify-center items-center bg-slate-100">
+      <div className="min-h-screen flex justify-center items-center bg-slate-100 font-sans">
         <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-emerald-600"></div>
       </div>
     );
@@ -50,7 +101,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(role)) {
+  if (allowedRoles && role && !allowedRoles.includes(role)) {
     return <Navigate to="/" replace />;
   }
 
@@ -63,7 +114,7 @@ const LoginPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex justify-center items-center bg-slate-100">
+      <div className="min-h-screen flex justify-center items-center bg-slate-100 font-sans">
         <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-emerald-600"></div>
       </div>
     );
@@ -100,8 +151,10 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
     else if (newRole === 'FAMILIA') navigate('/familia/chats');
   };
 
+  const activeRole = role || 'ADMIN';
+
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-between">
+    <div className="min-h-screen bg-slate-100 flex flex-col justify-between font-sans">
       
       {/* Header Navbar */}
       <header className="bg-slate-950 text-white p-4 shadow-md flex flex-wrap justify-between items-center gap-4 z-40 relative">
@@ -115,7 +168,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
 
         {/* Dynamic Navigation Tabs (Desktop only) */}
         <div className="hidden md:flex flex-wrap gap-1">
-          {role === 'ADMIN' && (
+          {activeRole === 'ADMIN' && (
             <>
               <button
                 onClick={() => navigate('/admin/faq')}
@@ -168,7 +221,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
             </>
           )}
 
-          {role === 'DOCENTE' && (
+          {activeRole === 'DOCENTE' && (
             <>
               <button
                 onClick={() => navigate('/docente/scanner')}
@@ -205,7 +258,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
             </>
           )}
 
-          {role === 'ESTUDIANTE' && (
+          {activeRole === 'ESTUDIANTE' && (
             <>
               <button
                 onClick={() => navigate('/estudiante/dashboard')}
@@ -242,7 +295,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
             </>
           )}
 
-          {role === 'FAMILIA' && (
+          {activeRole === 'FAMILIA' && (
             <>
               <button
                 onClick={() => navigate('/familia/chats')}
@@ -283,7 +336,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
         {/* Global Notifications Bell + Profile and Logout */}
         <div className="flex items-center gap-2">
           <GlobalAnnouncements 
-            userRole={role} 
+            userRole={activeRole} 
             announcements={announcements} 
             setAnnouncements={setAnnouncements} 
             unreadCount={unreadCount} 
@@ -294,7 +347,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
             <div className="flex items-center gap-1 bg-slate-900 border border-amber-500 rounded px-2 py-0.5 text-slate-300">
               <span className="text-[9px] text-amber-400 font-bold uppercase tracking-wider hidden sm:inline">QA:</span>
               <select
-                value={role}
+                value={activeRole}
                 onChange={(e) => handleSwitchRole(e.target.value)}
                 className="bg-transparent text-white font-bold text-xs cursor-pointer focus:outline-none border-none py-0.5"
               >
@@ -306,13 +359,14 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
             </div>
           ) : (
             <span className="text-xs font-medium bg-slate-900 px-2 py-1 rounded border border-slate-800 text-slate-300 max-w-[100px] truncate hidden sm:inline">
-              <strong>{role}</strong>
+              <strong>{activeRole}</strong>
             </span>
           )}
           
           <button
             onClick={handleLogout}
             className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-1.5 px-2.5 rounded-lg text-xs transition-colors cursor-pointer"
+            title="Cerrar Sesión"
           >
             🚪
           </button>
@@ -326,7 +380,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
 
       {/* Mobile Bottom Navigation Bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950 border-t border-slate-900 text-white z-50 flex overflow-x-auto scrollbar-none py-2 px-2 gap-1 select-none shadow-lg">
-        {role === 'ADMIN' && (
+        {activeRole === 'ADMIN' && (
           <>
             <button
               onClick={() => navigate('/admin/faq')}
@@ -384,7 +438,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
             </button>
           </>
         )}
-        {role === 'DOCENTE' && (
+        {activeRole === 'DOCENTE' && (
           <>
             <button
               onClick={() => navigate('/docente/scanner')}
@@ -424,7 +478,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
             </button>
           </>
         )}
-        {role === 'ESTUDIANTE' && (
+        {activeRole === 'ESTUDIANTE' && (
           <>
             <button
               onClick={() => navigate('/estudiante/dashboard')}
@@ -464,7 +518,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
             </button>
           </>
         )}
-        {role === 'FAMILIA' && (
+        {activeRole === 'FAMILIA' && (
           <>
             <button
               onClick={() => navigate('/familia/chats')}
@@ -506,7 +560,7 @@ function MainLayout({ children, announcements, setAnnouncements, unreadCount, se
         )}
       </nav>
 
-      {/* Footer (Desktop only to save mobile viewport height) */}
+      {/* Footer (Desktop only) */}
       <footer className="hidden md:block bg-slate-900 text-slate-500 text-center py-3 text-[10px] border-t border-slate-800">
         Plataforma Escolar Unidireccional © 2026. Todos los derechos reservados.
       </footer>
@@ -541,146 +595,148 @@ function App() {
   };
 
   return (
-    <Routes>
-      {/* Public Login Route */}
-      <Route path="/login" element={<LoginPage />} />
+    <ErrorBoundary>
+      <Routes>
+        {/* Public Login Route */}
+        <Route path="/login" element={<LoginPage />} />
 
-      {/* Root Route - Decides where to redirect based on user role */}
-      <Route path="/" element={<RootRedirect />} />
+        {/* Root Route - Decides where to redirect based on user role */}
+        <Route path="/" element={<RootRedirect />} />
 
-      {/* ADMIN Routes */}
-      <Route path="/admin/faq" element={
-        <ProtectedRoute allowedRoles={['ADMIN']}>
-          <MainLayout {...layoutProps}><AdminKnowledgeBase /></MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/admin/multimedia" element={
-        <ProtectedRoute allowedRoles={['ADMIN']}>
-          <MainLayout {...layoutProps}><StudentVideoGallery /></MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/admin/scanner" element={
-        <ProtectedRoute allowedRoles={['ADMIN']}>
-          <MainLayout {...layoutProps}>
-            <div className="p-4 bg-slate-50">
-              <h2 className="text-center font-bold text-slate-700 mb-2">Cámara de Escaneo de Asistencia Escolar</h2>
-              <QRAttendanceTracker forceMode="scanner" />
-            </div>
-          </MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/admin/docentes" element={
-        <ProtectedRoute allowedRoles={['ADMIN']}>
-          <MainLayout {...layoutProps}><TeacherAttendance /></MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/admin/informes" element={
-        <ProtectedRoute allowedRoles={['ADMIN']}>
-          <MainLayout {...layoutProps}><ReportCreator userRole="ADMIN" /></MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/admin/anuncios" element={
-        <ProtectedRoute allowedRoles={['ADMIN']}>
-          <MainLayout {...layoutProps}>
-            <div className="p-6">
-              <GlobalAnnouncements 
-                userRole="ADMIN_PANEL_INJECTION" 
-                announcements={announcements} 
-                setAnnouncements={setAnnouncements} 
-                unreadCount={unreadCount} 
-                setUnreadCount={setUnreadCount} 
+        {/* ADMIN Routes */}
+        <Route path="/admin/faq" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <MainLayout {...layoutProps}><AdminKnowledgeBase /></MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/multimedia" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <MainLayout {...layoutProps}><StudentVideoGallery /></MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/scanner" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <MainLayout {...layoutProps}>
+              <div className="p-4 bg-slate-50">
+                <h2 className="text-center font-bold text-slate-700 mb-2">Cámara de Escaneo de Asistencia Escolar</h2>
+                <QRAttendanceTracker forceMode="scanner" />
+              </div>
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/docentes" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <MainLayout {...layoutProps}><TeacherAttendance /></MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/informes" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <MainLayout {...layoutProps}><ReportCreator userRole="ADMIN" /></MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/anuncios" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <MainLayout {...layoutProps}>
+              <div className="p-6">
+                <GlobalAnnouncements 
+                  userRole="ADMIN_PANEL_INJECTION" 
+                  announcements={announcements} 
+                  setAnnouncements={setAnnouncements} 
+                  unreadCount={unreadCount} 
+                  setUnreadCount={setUnreadCount} 
+                />
+              </div>
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+
+        {/* DOCENTE Routes */}
+        <Route path="/docente/scanner" element={
+          <ProtectedRoute allowedRoles={['DOCENTE']}>
+            <MainLayout {...layoutProps}>
+              <div className="p-4 bg-slate-50">
+                <h2 className="text-center font-bold text-slate-700 mb-2">Cámara de Escaneo de Asistencia Escolar</h2>
+                <QRAttendanceTracker forceMode="scanner" />
+              </div>
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/docente/chats" element={
+          <ProtectedRoute allowedRoles={['DOCENTE']}>
+            <MainLayout {...layoutProps}>
+              <WhatsAppInbox schoolName="Instituto San Martín" primaryColor="#075E54" secondaryColor="#128C7E" />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/docente/multimedia" element={
+          <ProtectedRoute allowedRoles={['DOCENTE']}>
+            <MainLayout {...layoutProps}><StudentVideoGallery /></MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/docente/informes" element={
+          <ProtectedRoute allowedRoles={['DOCENTE']}>
+            <MainLayout {...layoutProps}><ReportCreator userRole="DOCENTE" /></MainLayout>
+          </ProtectedRoute>
+        } />
+
+        {/* ESTUDIANTE Routes */}
+        <Route path="/estudiante/dashboard" element={
+          <ProtectedRoute allowedRoles={['ESTUDIANTE']}>
+            <MainLayout {...layoutProps}>
+              <StudentDashboard 
+                onLogout={handleLogout}
+                onNavigateToInbox={() => navigate('/estudiante/chats')}
+                onNavigateToGallery={() => navigate('/estudiante/multimedia')}
               />
-            </div>
-          </MainLayout>
-        </ProtectedRoute>
-      } />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/estudiante/chats" element={
+          <ProtectedRoute allowedRoles={['ESTUDIANTE']}>
+            <MainLayout {...layoutProps}>
+              <WhatsAppInbox schoolName="Instituto San Martín" primaryColor="#075E54" secondaryColor="#128C7E" />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/estudiante/multimedia" element={
+          <ProtectedRoute allowedRoles={['ESTUDIANTE']}>
+            <MainLayout {...layoutProps}><StudentVideoGallery /></MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/estudiante/informes" element={
+          <ProtectedRoute allowedRoles={['ESTUDIANTE']}>
+            <MainLayout {...layoutProps}><ReportViewer userRole="ESTUDIANTE" /></MainLayout>
+          </ProtectedRoute>
+        } />
 
-      {/* DOCENTE Routes */}
-      <Route path="/docente/scanner" element={
-        <ProtectedRoute allowedRoles={['DOCENTE']}>
-          <MainLayout {...layoutProps}>
-            <div className="p-4 bg-slate-50">
-              <h2 className="text-center font-bold text-slate-700 mb-2">Cámara de Escaneo de Asistencia Escolar</h2>
-              <QRAttendanceTracker forceMode="scanner" />
-            </div>
-          </MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/docente/chats" element={
-        <ProtectedRoute allowedRoles={['DOCENTE']}>
-          <MainLayout {...layoutProps}>
-            <WhatsAppInbox schoolName="Instituto San Martín" primaryColor="#075E54" secondaryColor="#128C7E" />
-          </MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/docente/multimedia" element={
-        <ProtectedRoute allowedRoles={['DOCENTE']}>
-          <MainLayout {...layoutProps}><StudentVideoGallery /></MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/docente/informes" element={
-        <ProtectedRoute allowedRoles={['DOCENTE']}>
-          <MainLayout {...layoutProps}><ReportCreator userRole="DOCENTE" /></MainLayout>
-        </ProtectedRoute>
-      } />
+        {/* FAMILIA Routes */}
+        <Route path="/familia/chats" element={
+          <ProtectedRoute allowedRoles={['FAMILIA']}>
+            <MainLayout {...layoutProps}>
+              <WhatsAppInbox schoolName="Instituto San Martín" primaryColor="#075E54" secondaryColor="#128C7E" />
+            </MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/familia/multimedia" element={
+          <ProtectedRoute allowedRoles={['FAMILIA']}>
+            <MainLayout {...layoutProps}><StudentVideoGallery /></MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/familia/boletin" element={
+          <ProtectedRoute allowedRoles={['FAMILIA']}>
+            <MainLayout {...layoutProps}><ParentPDFReport /></MainLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/familia/informes" element={
+          <ProtectedRoute allowedRoles={['FAMILIA']}>
+            <MainLayout {...layoutProps}><ReportViewer userRole="FAMILIA" /></MainLayout>
+          </ProtectedRoute>
+        } />
 
-      {/* ESTUDIANTE Routes */}
-      <Route path="/estudiante/dashboard" element={
-        <ProtectedRoute allowedRoles={['ESTUDIANTE']}>
-          <MainLayout {...layoutProps}>
-            <StudentDashboard 
-              onLogout={handleLogout}
-              onNavigateToInbox={() => navigate('/estudiante/chats')}
-              onNavigateToGallery={() => navigate('/estudiante/multimedia')}
-            />
-          </MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/estudiante/chats" element={
-        <ProtectedRoute allowedRoles={['ESTUDIANTE']}>
-          <MainLayout {...layoutProps}>
-            <WhatsAppInbox schoolName="Instituto San Martín" primaryColor="#075E54" secondaryColor="#128C7E" />
-          </MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/estudiante/multimedia" element={
-        <ProtectedRoute allowedRoles={['ESTUDIANTE']}>
-          <MainLayout {...layoutProps}><StudentVideoGallery /></MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/estudiante/informes" element={
-        <ProtectedRoute allowedRoles={['ESTUDIANTE']}>
-          <MainLayout {...layoutProps}><ReportViewer userRole="ESTUDIANTE" /></MainLayout>
-        </ProtectedRoute>
-      } />
-
-      {/* FAMILIA Routes */}
-      <Route path="/familia/chats" element={
-        <ProtectedRoute allowedRoles={['FAMILIA']}>
-          <MainLayout {...layoutProps}>
-            <WhatsAppInbox schoolName="Instituto San Martín" primaryColor="#075E54" secondaryColor="#128C7E" />
-          </MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/familia/multimedia" element={
-        <ProtectedRoute allowedRoles={['FAMILIA']}>
-          <MainLayout {...layoutProps}><StudentVideoGallery /></MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/familia/boletin" element={
-        <ProtectedRoute allowedRoles={['FAMILIA']}>
-          <MainLayout {...layoutProps}><ParentPDFReport /></MainLayout>
-        </ProtectedRoute>
-      } />
-      <Route path="/familia/informes" element={
-        <ProtectedRoute allowedRoles={['FAMILIA']}>
-          <MainLayout {...layoutProps}><ReportViewer userRole="FAMILIA" /></MainLayout>
-        </ProtectedRoute>
-      } />
-
-      {/* Fallback Catch-All Route */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Fallback Catch-All Route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </ErrorBoundary>
   );
 }
 

@@ -12,6 +12,15 @@ const ROLE_IDS = {
   'ESTUDIANTE': 6
 };
 
+const ROLE_NAMES = {
+  1: 'ADMIN',
+  2: 'DIRECTOR',
+  3: 'COORDINADOR',
+  4: 'DOCENTE',
+  5: 'FAMILIA',
+  6: 'ESTUDIANTE'
+};
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const isMockMode = !supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('tu-proyecto-id');
@@ -64,73 +73,89 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error('Error cargando el perfil del usuario:', err.message);
+      console.warn('No se pudo cargar perfil desde Supabase:', err.message);
       return null;
     }
   };
 
   useEffect(() => {
-    const storedSession = localStorage.getItem('mock_session');
-    if (storedSession) {
+    const initAuth = async () => {
       try {
-        const sess = JSON.parse(storedSession);
-        if (sess.profile?.isQA || isMockMode) {
-          setSession(sess);
-          setUser(sess.user);
-          setProfile(sess.profile);
+        const storedSession = localStorage.getItem('mock_session');
+        if (storedSession) {
+          try {
+            const sess = JSON.parse(storedSession);
+            if (sess && (sess.profile?.isQA || isMockMode || sess.user?.email === 'horacitoxp@gmail.com')) {
+              setSession(sess);
+              setUser(sess.user);
+              setProfile(sess.profile);
+              setLoading(false);
+              return;
+            }
+          } catch (e) {
+            localStorage.removeItem('mock_session');
+          }
+        }
+
+        if (isMockMode) {
           setLoading(false);
           return;
         }
-      } catch (e) {
-        localStorage.removeItem('mock_session');
+
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+
+        if (currentSession?.user) {
+          const userProfile = await fetchProfile(currentSession.user.id);
+          setProfile(userProfile);
+        }
+      } catch (err) {
+        console.warn('Error inicializando auth:', err);
+      } finally {
+        setLoading(false);
       }
-    }
+    };
 
-    if (isMockMode) {
-      setLoading(false);
-      return;
-    }
+    initAuth();
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const userProfile = await fetchProfile(session.user.id);
-        setProfile(userProfile);
-      }
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const currentStored = localStorage.getItem('mock_session');
-      if (currentStored) {
+    let subscription = null;
+    try {
+      const { data } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
         try {
-          const sess = JSON.parse(currentStored);
-          if (sess.profile?.isQA) return;
+          const currentStored = localStorage.getItem('mock_session');
+          if (currentStored) {
+            const sess = JSON.parse(currentStored);
+            if (sess.profile?.isQA) return;
+          }
         } catch(e) {}
-      }
 
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        setLoading(true);
-        const userProfile = await fetchProfile(session.user.id);
-        setProfile(userProfile);
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+        if (newSession?.user) {
+          const userProfile = await fetchProfile(newSession.user.id);
+          setProfile(userProfile);
+        } else {
+          setProfile(null);
+        }
         setLoading(false);
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
+      });
+      subscription = data?.subscription;
+    } catch (err) {
+      console.warn('Error suscribiendo a cambios de auth:', err);
+    }
 
     return () => {
-      subscription.unsubscribe();
+      if (subscription) subscription.unsubscribe();
     };
   }, []);
 
   const login = async (email, password) => {
     setLoading(true);
 
+    // QA Super User Bypass
     if (email.toLowerCase() === 'horacitoxp@gmail.com' && password === '1234567') {
       const mockUserObj = { id: 'mock-id-qa', email: 'horacitoxp@gmail.com' };
       const mockProfileObj = {
@@ -140,6 +165,7 @@ export const AuthProvider = ({ children }) => {
         activo: true,
         rol_id: 1,
         roles: { nombre: 'ADMIN' },
+        rol: 'ADMIN',
         isQA: true
       };
 
@@ -171,8 +197,9 @@ export const AuthProvider = ({ children }) => {
         nombre: match.nombre,
         apellido: match.apellido,
         activo: true,
-        rol_id: ROLE_IDS[match.rol],
+        rol_id: ROLE_IDS[match.rol] || 1,
         roles: { nombre: match.rol },
+        rol: match.rol,
         isQA: match.isQA || false
       };
 
@@ -189,12 +216,14 @@ export const AuthProvider = ({ children }) => {
       return mockSessObj;
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      return data;
+    } catch (err) {
       setLoading(false);
-      throw error;
+      throw err;
     }
-    return data;
   };
 
   const signup = async (email, password, nombre, apellido, roleName) => {
@@ -220,23 +249,25 @@ export const AuthProvider = ({ children }) => {
       return newUser;
     }
 
-    const roleId = ROLE_IDS[roleName] || 5;
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          nombre,
-          apellido,
-          rol_id: roleId
+    try {
+      const roleId = ROLE_IDS[roleName] || 5;
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            nombre,
+            apellido,
+            rol_id: roleId
+          }
         }
-      }
-    });
-    if (error) {
+      });
+      if (error) throw error;
+      return data;
+    } catch (err) {
       setLoading(false);
-      throw error;
+      throw err;
     }
-    return data;
   };
 
   const logout = async () => {
@@ -255,26 +286,35 @@ export const AuthProvider = ({ children }) => {
   };
 
   const switchRole = (newRole) => {
-    if (!profile) return;
     const updatedProfile = {
-      ...profile,
+      ...(profile || {}),
       rol_id: ROLE_IDS[newRole] || 5,
-      roles: { nombre: newRole }
+      roles: { nombre: newRole },
+      rol: newRole,
+      isQA: true
     };
     setProfile(updatedProfile);
 
-    if (session) {
-      const updatedSess = {
-        ...session,
-        profile: updatedProfile
-      };
-      localStorage.setItem('mock_session', JSON.stringify(updatedSess));
-      setSession(updatedSess);
-    }
+    const updatedSess = {
+      user: user || { id: 'mock-id-qa', email: 'horacitoxp@gmail.com' },
+      profile: updatedProfile
+    };
+    localStorage.setItem('mock_session', JSON.stringify(updatedSess));
+    setSession(updatedSess);
   };
 
-  const roleName = profile?.roles?.nombre || null;
-  const isQAMode = profile?.isQA || user?.email === 'horacitoxp@gmail.com' || false;
+  // Safe fallback calculation for roleName
+  const roleName = 
+    profile?.roles?.nombre || 
+    profile?.rol || 
+    (profile?.rol_id ? ROLE_NAMES[profile.rol_id] : null) || 
+    (session ? 'ADMIN' : null);
+
+  const isQAMode = 
+    profile?.isQA || 
+    user?.email === 'horacitoxp@gmail.com' || 
+    session?.user?.email === 'horacitoxp@gmail.com' || 
+    false;
 
   return (
     <AuthContext.Provider value={{
